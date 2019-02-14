@@ -40,9 +40,18 @@
 #define MCUBOOT_USE_TINYCRYPT
 #elif defined(CONFIG_BOOT_USE_CC310)
 #define MCUBOOT_USE_CC310
-#ifdef CONFIG_BOOT_USE_NRF_CC310_BL
-#define MCUBOOT_USE_NRF_CC310_BL
+#elif defined(CONFIG_MBEDTLS_PSA_CRYPTO_CLIENT)
+#define MCUBOOT_USE_PSA_CRYPTO
+#elif defined(CONFIG_BOOT_USE_NRF_EXTERNAL_CRYPTO)
+#define MCUBOOT_USE_NRF_EXTERNAL_CRYPTO
 #endif
+
+#ifdef CONFIG_BOOT_IMG_HASH_ALG_SHA512
+#define MCUBOOT_SHA512
+#endif
+
+#ifdef CONFIG_BOOT_IMG_HASH_ALG_SHA256
+#define MCUBOOT_SHA256
 #endif
 
 /* Zephyr, regardless of C library used, provides snprintf */
