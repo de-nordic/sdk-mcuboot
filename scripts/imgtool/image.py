@@ -81,6 +81,9 @@ TLV_INFO_SIZE = 4
 TLV_INFO_MAGIC = 0x6907
 TLV_PROT_INFO_MAGIC = 0x6908
 
+TLV_VENDOR_RES_MIN = 0x00a0
+TLV_VENDOR_RES_MAX = 0xfffe
+
 STRUCT_ENDIAN_DICT = {
         'little': '<',
         'big':    '>'
@@ -111,7 +114,12 @@ class TLV():
         """
         e = STRUCT_ENDIAN_DICT[self.endian]
         if isinstance(kind, int):
-            buf = struct.pack(e + 'BBH', kind, 0, len(payload))
+            if not TLV_VENDOR_RES_MIN <= kind <= TLV_VENDOR_RES_MAX:
+                msg = "Invalid custom TLV type value '0x{:04x}', allowed " \
+                      "value should be between 0x{:04x} and 0x{:04x}".format(
+                      kind, TLV_VENDOR_RES_MIN, TLV_VENDOR_RES_MAX)
+                raise click.UsageError(msg)
+            buf = struct.pack(e + 'HH', kind, len(payload))
         else:
             buf = struct.pack(e + 'BBH', TLV_VALUES[kind], 0, len(payload))
         self.buf += buf
@@ -164,13 +172,13 @@ class Image():
                 0x35, 0x52, 0x50, 0x0f,
                 0x2c, 0xb6, 0x79, 0x80, ])
         else:
-            align_lsb = self.max_align & 0x00ff
-            align_msb = (self.max_align & 0xff00) >> 8
-            self.boot_magic = bytes([
-                align_lsb, align_msb, 0x2d, 0xe1,
-                0x5d, 0x29, 0x41, 0x0b,
-                0x8d, 0x77, 0x67, 0x9c,
-                0x11, 0x0f, 0x1f, 0x8a, ])
+            lsb = self.max_align & 0x00ff
+            msb = (self.max_align & 0xff00) >> 8
+            align = bytes([msb, lsb]) if self.endian == "big" else bytes([lsb, msb])
+            self.boot_magic = align + bytes([0x2d, 0xe1,
+                                            0x5d, 0x29, 0x41, 0x0b,
+                                            0x8d, 0x77, 0x67, 0x9c,
+                                            0x11, 0x0f, 0x1f, 0x8a, ])
 
         if security_counter == 'auto':
             # Security counter has not been explicitly provided,

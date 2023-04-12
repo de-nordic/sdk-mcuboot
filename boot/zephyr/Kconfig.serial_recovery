@@ -14,6 +14,7 @@ menuconfig MCUBOOT_SERIAL
 	select UART_INTERRUPT_DRIVEN
 	select BASE64
 	select CRC
+	select ZCBOR
 	help
 	  If y, enables a serial-port based update mode. This allows
 	  MCUboot itself to load update images into flash over a UART.
@@ -29,10 +30,21 @@ choice BOOT_SERIAL_DEVICE
 config BOOT_SERIAL_UART
 	bool "UART"
 	# SERIAL and UART_INTERRUPT_DRIVEN already selected
+	help
+	  The serial device to use will be fist selected via chosen
+	  node "zephyr,uart-mcumgr", when such node does not exist
+	  the "zephyr,console" is used.  In case when
+	  the "zephyr,uart-mcumgr" points to the same device as
+	  the "zephyr,console" compilation error will be triggered.
 
 config BOOT_SERIAL_CDC_ACM
 	bool "CDC ACM"
 	select USB_DEVICE_STACK
+	help
+	  This setting will choose CDC ACM for serial recovery unless chosen
+	  "zephyr,uart-mcumgr" is present, in which case the chosen takes
+	  precedence and redirects serial recovery to uart pointed by
+	  the chosen, leaving console on CDC ACM.
 
 endchoice
 
@@ -54,6 +66,7 @@ config MCUBOOT_SERIAL_DIRECT_IMAGE_UPLOAD
 config BOOT_SERIAL_UNALIGNED_BUFFER_SIZE
 	int "Stack buffer for unaligned memory writes"
 	default 64
+	range 0 128
 	help
 	  Specifies the stack usage for a buffer which is used for unaligned
 	  memory access when data is written to a device with memory alignment
@@ -82,32 +95,6 @@ config BOOT_SERIAL_MAX_RECEIVE_SIZE
 	  be equal to the maximum line length, BOOT_MAX_LINE_INPUT_LEN times
 	  by the number of receive buffers, BOOT_LINE_BUFS to allow for
 	  optimal data transfer speeds).
-
-config BOOT_SERIAL_DETECT_PORT
-	string "GPIO device to trigger serial recovery mode (DEPRECATED)"
-	default GPIO_0 if SOC_FAMILY_NRF
-	help
-	  Zephyr GPIO device that contains the pin used to trigger
-	  serial recovery mode.
-
-config BOOT_SERIAL_DETECT_PIN
-	int "Pin to trigger serial recovery mode (DEPRECATED)"
-	default 6 if BOARD_NRF9160DK_NRF9160
-	default 11 if BOARD_NRF52840DK_NRF52840
-	default 13 if BOARD_NRF52DK_NRF52832 || BOARD_NRF52833DK_NRF52833
-	default 23 if BOARD_NRF5340PDK_NRF5340_CPUAPP || BOARD_NRF5340PDK_NRF5340_CPUAPP_NS || \
-		BOARD_NRF5340DK_NRF5340_CPUAPP || BOARD_NRF5340DK_NRF5340_CPUAPP_NS
-	default -1
-	help
-	  Pin on the serial detect port that triggers serial recovery mode.
-
-config BOOT_SERIAL_DETECT_PIN_VAL
-	int "Serial detect pin trigger value (DEPRECATED)"
-	default 0
-	range 0 1
-	help
-	  Logic value of the detect pin that triggers serial recovery
-	  mode.
 
 config BOOT_SERIAL_DETECT_DELAY
 	int "Serial detect pin detection delay time [ms]"
@@ -180,5 +167,12 @@ config BOOT_SERIAL_WAIT_FOR_DFU_TIMEOUT
 	depends on BOOT_SERIAL_WAIT_FOR_DFU
 	help
 	  timeout in ms for MCUboot to wait to allow for DFU to be invoked.
+
+config BOOT_SERIAL_IMG_GRP_HASH
+	bool "Image list hash support"
+	default y
+	help
+	  If y, image list responses will include the image hash (adds ~100
+	  bytes of flash).
 
 endif # MCUBOOT_SERIAL
