@@ -29,13 +29,16 @@
 #include "bootutil/crypto/ecdh_x25519.h"
 #endif
 
+#if defined(CONFIG_NRF_SECURITY)
+/* We are not really using the MBEDTLS but need the ASN.1 parsing funcitons */
+#define MBEDTLS_ASN1_PARSE_C
+#endif
+
 #if defined(MCUBOOT_ENCRYPT_EC256) || defined(MCUBOOT_ENCRYPT_X25519)
 #include "bootutil/crypto/sha.h"
-#if !defined(MCUBOOT_USE_PSA_CRYPTO)
 #include "bootutil/crypto/hmac_sha256.h"
 #include "mbedtls/oid.h"
 #include "mbedtls/asn1.h"
-#endif
 #endif
 
 #include "bootutil/image.h"
@@ -44,6 +47,29 @@
 #include "bootutil/crypto/common.h"
 
 #include "bootutil_priv.h"
+
+#if defined(CONFIG_NRF_SECURITY)
+#ifdef MBEDTLS_CONTEXT_MEMBER
+#undef MBEDTLS_CONTEXT_MEMBER
+#endif
+#define MBEDTLS_CONTEXT_MEMBER(bu) bu
+#endif
+
+#define BOOT_LOG_ERR printf
+
+void hexdump(const uint8_t buff[], size_t size)
+{
+    int i = 1;
+    while (i <= size) {
+        printf("0x%hhx", buff[i - 1]);
+	if (!(i % 16)) {
+            printf("\n");
+        } else {
+	    printf(" ");
+        }
+        ++i;
+    }
+}
 
 #if defined(MCUBOOT_ENCRYPT_EC256) || defined(MCUBOOT_ENCRYPT_X25519)
 #if defined(_compare)
@@ -171,7 +197,6 @@ parse_ec256_enckey(uint8_t **p, uint8_t *end, uint8_t *private_key)
 }
 #endif /* defined(MCUBOOT_ENCRYPT_EC256) */
 
-#if !defined(MCUBOOT_USE_PSA_CRYPTO)
 #if defined(MCUBOOT_ENCRYPT_X25519)
 #define X25519_OID "\x6e"
 static const uint8_t ec_pubkey_oid[] = MBEDTLS_OID_ISO_IDENTIFIED_ORG \
@@ -180,7 +205,6 @@ static const uint8_t ec_pubkey_oid[] = MBEDTLS_OID_ISO_IDENTIFIED_ORG \
 #define SHARED_KEY_LEN 32
 #define PRIV_KEY_LEN   32
 
-#if defined(MCUBOOT_USE_MBED_TLS)
 static int
 parse_x25519_enckey(uint8_t **p, uint8_t *end, uint8_t *private_key)
 {
@@ -227,17 +251,6 @@ parse_x25519_enckey(uint8_t **p, uint8_t *end, uint8_t *private_key)
     memcpy(private_key, *p, PRIV_KEY_LEN);
     return 0;
 }
-#else
-static int
-parse_x25519_enckey(uint8_t **p, uint8_t *end, uint8_t *private_key)
-{
-    ARG_UNUSED(p);
-    ARG_UNUSED(end);
-    ARG_UNUSED(private_key);
-
-    return 0;
-}
-#endif
 #endif /* defined(MCUBOOT_ENCRYPT_X25519) */
 
 #if defined(MCUBOOT_ENCRYPT_EC256) || defined(MCUBOOT_ENCRYPT_X25519)
@@ -347,7 +360,6 @@ error:
     return -1;
 }
 #endif
-#endif /* !defined(MCUBOOT_USE_PSA_CRYPTO) */
 
 int
 boot_enc_init(struct enc_key_data *enc_state, uint8_t slot)
@@ -442,7 +454,6 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
 #if defined(MCUBOOT_ENCRYPT_X25519)
     bootutil_ecdh_x25519_context ecdh_x25519;
 #endif
-#if !defined(MCUBOOT_USE_PSA_CRYPTO)
 #if defined(MCUBOOT_ENCRYPT_EC256) || defined(MCUBOOT_ENCRYPT_X25519)
     bootutil_hmac_sha256_context hmac;
     bootutil_aes_ctr_context aes_ctr;
@@ -455,7 +466,6 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
     uint8_t counter[BOOTUTIL_CRYPTO_AES_CTR_BLOCK_SIZE];
     uint16_t len;
 #endif
-#endif /* !defined(MCUBOOT_USE_PSA_CRYPTO) */
     int rc = -1;
 
 #if defined(MCUBOOT_ENCRYPT_RSA)
@@ -531,6 +541,7 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
      * First "element" in the TLV is the curve point (public key)
      */
 
+#if 0
     bootutil_ecdh_x25519_init(&ecdh_x25519);
 
     rc = bootutil_ecdh_x25519_shared_secret(&ecdh_x25519, &buf[EC_PUBK_INDEX], private_key, shared);
@@ -538,6 +549,38 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
     if (!rc) {
         return -1;
     }
+#endif
+    int shared_secret_len;
+    psa_status_t psa_ret = PSA_ERROR_BAD_STATE;
+    psa_key_id_t key_id;
+    psa_key_attributes_t key_attr = PSA_KEY_ATTRIBUTES_INIT;
+
+    psa_ret = psa_crypto_init();
+    if (psa_ret != PSA_SUCCESS) {
+        BOOT_LOG_ERR("PSA Crypto init failed %d\n", psa_ret);
+        return -1;
+    }
+
+    psa_set_key_type(&key_attr, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_MONTGOMERY));
+    psa_set_key_usage_flags(&key_attr, PSA_KEY_USAGE_DERIVE);
+    psa_set_key_algorithm(&key_attr, PSA_ALG_ECDH);
+
+    psa_ret = psa_import_key(&key_attr, private_key, sizeof(private_key), &key_id);
+    if (psa_ret != PSA_SUCCESS) {
+        BOOT_LOG_ERR("PSA Import key failed %d\n", psa_ret);
+        return -1;
+    }
+    
+    psa_ret = psa_raw_key_agreement(PSA_ALG_ECDH, key_id, &buf[EC_PUBK_INDEX], 32,
+                                    shared, sizeof(shared), &shared_secret_len);
+    if (psa_ret != PSA_SUCCESS) {
+        BOOT_LOG_ERR("PSA Failed to rerive secret failed %d\n", psa_ret);
+        return -1;
+    }
+
+    hexdump(shared, sizeof(shared));
+
+    return -1;
 
 #endif /* defined(MCUBOOT_ENCRYPT_X25519) */
 
@@ -558,6 +601,7 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
      * HMAC the key and check that our received MAC matches the generated tag
      */
 
+#if 0
     bootutil_hmac_sha256_init(&hmac);
 
     rc = bootutil_hmac_sha256_set_key(&hmac, &derived_key[BOOT_ENC_KEY_SIZE], 32);
@@ -612,6 +656,7 @@ boot_enc_decrypt(const uint8_t *buf, uint8_t *enckey)
     bootutil_aes_ctr_drop(&aes_ctr);
 
     rc = 0;
+#endif
 
 #endif /* defined(MCUBOOT_ENCRYPT_EC256) || defined(MCUBOOT_ENCRYPT_X25519) */
 

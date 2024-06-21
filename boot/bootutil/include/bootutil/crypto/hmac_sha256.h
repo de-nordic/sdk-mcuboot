@@ -13,7 +13,7 @@
 #include "mcuboot_config/mcuboot_config.h"
 
 #if (defined(MCUBOOT_USE_MBED_TLS) + \
-     defined(MCUBOOT_USE_TINYCRYPT)) != 1
+     defined(MCUBOOT_USE_TINYCRYPT) + defined(MCUBOOT_USE_PSA_CRYPTO)) != 1
     #error "One crypto backend must be defined: either MBED_TLS or TINYCRYPT"
 #endif
 
@@ -126,6 +126,33 @@ static inline int bootutil_hmac_sha256_finish(bootutil_hmac_sha256_context *ctx,
     return mbedtls_md_hmac_finish(ctx, tag);
 }
 #endif /* MCUBOOT_USE_MBED_TLS */
+
+#if defined(MCUBOOT_USE_PSA_CRYPTO)
+typedef psa_mac_operation_t bootutil_hmac_sha256_context;
+
+static inline void bootutil_hmac_sha256_init(bootutil_hmac_sha256_context *ctx)
+{
+}
+
+static inline void bootutil_hmac_sha256_drop(bootutil_hmac_sha256_context *ctx)
+{
+}
+
+static inline int bootutil_hmac_sha256_set_key(bootutil_hmac_sha256_context *ctx, const uint8_t *key, unsigned int key_size)
+{
+    return 0;
+}
+
+static inline int bootutil_hmac_sha256_update(bootutil_hmac_sha256_context *ctx, const void *data, unsigned int data_length)
+{
+    return 0;
+}
+
+static inline int bootutil_hmac_sha256_finish(bootutil_hmac_sha256_context *ctx, uint8_t *tag, unsigned int taglen)
+{
+    return 0;
+}
+#endif
 
 #ifdef __cplusplus
 }

@@ -38,8 +38,12 @@
     #define BOOTUTIL_CRYPTO_AES_CTR_BLOCK_SIZE TC_AES_BLOCK_SIZE
 #endif /* MCUBOOT_USE_TINYCRYPT */
 
+
 #if defined(MCUBOOT_USE_PSA_CRYPTO)
 #include <psa/crypto.h>
+    /* To fix: why is it always named BOOTUTIL_CRYPTO_AES_CTR_KEY_SIZE */
+    #define BOOTUTIL_CRYPTO_AES_CTR_KEY_SIZE BOOT_ENC_KEY_SIZE
+    #define BOOTUTIL_CRYPTO_AES_CTR_BLOCK_SIZE (16)
 #endif
 
 #include <stdint.h>
@@ -49,7 +53,38 @@ extern "C" {
 #endif
 
 #if defined(MCUBOOT_USE_PSA_CRYPTO)
-typedef psa_hash_operation_t bootutil_aes_ctr_context;
+typedef psa_cipher_operation_t bootutil_aes_ctr_context;
+
+static inline void bootutil_aes_ctr_init(bootutil_aes_ctr_context *ctx)
+{
+#if 0
+    psa_status_t ret = psa_crypto_init();
+    assert(ret == PSA_SUCCESS);
+#endif
+}
+
+static inline void bootutil_aes_ctr_drop(bootutil_aes_ctr_context *ctx)
+{
+    /* XXX: config defines MBEDTLS_PLATFORM_NO_STD_FUNCTIONS so no need to free */
+    /* (void)mbedtls_aes_free(ctx); */
+    (void)ctx;
+}
+
+static inline int bootutil_aes_ctr_set_key(bootutil_aes_ctr_context *ctx, const uint8_t *k)
+{
+    
+    return 0;
+}
+
+static inline int bootutil_aes_ctr_encrypt(bootutil_aes_ctr_context *ctx, uint8_t *counter, const uint8_t *m, uint32_t mlen, size_t blk_off, uint8_t *c)
+{
+    return 0;
+}
+
+static inline int bootutil_aes_ctr_decrypt(bootutil_aes_ctr_context *ctx, uint8_t *counter, const uint8_t *c, uint32_t clen, size_t blk_off, uint8_t *m)
+{
+    return 0;
+}
 #endif
 
 #if defined(MCUBOOT_USE_MBED_TLS)
