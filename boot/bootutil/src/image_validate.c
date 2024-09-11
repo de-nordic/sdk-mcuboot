@@ -366,6 +366,35 @@ bootutil_get_img_security_cnt(struct image_header *hdr,
     return 0;
 }
 
+#if defined(MCUBOOT_SIGN_PURE)
+/* Returns:
+ *  0 -- found
+ *  1 -- not found
+ * -1 -- failed for some reason
+ *
+ * Value of TLV does not matter, presence decides.
+ */
+static int bootutil_check_for_pure(const struct image_header *hdr,
+                                   const struct flash_area *fap)
+{
+    struct image_tlv_iter it;
+    uint32_t off;
+    uint16_t len;
+    int32_t rc;
+
+    rc = bootutil_tlv_iter_begin(&it, hdr, fap, IMAGE_TLV_SIG_PURE, false);
+    if (rc) {
+        return rc;
+    }
+
+    /* Search for the TLV */
+    rc = bootutil_tlv_iter_next(&it, &off, &len, NULL);
+
+    return rc;
+}
+#endif
+
+
 #ifndef ALLOW_ROGUE_TLVS
 /*
  * The following list of TLVs are the only entries allowed in the unprotected
@@ -382,6 +411,9 @@ static const uint16_t allowed_unprot_tlvs[] = {
      IMAGE_TLV_ECDSA_SIG,
      IMAGE_TLV_RSA3072_PSS,
      IMAGE_TLV_ED25519,
+#if defined(MCUBOOT_SIGN_PURE)
+     IMAGE_TLV_SIG_PURE,
+#endif
      IMAGE_TLV_ENC_RSA2048,
      IMAGE_TLV_ENC_KW,
      IMAGE_TLV_ENC_EC256,
@@ -441,6 +473,15 @@ bootutil_img_validate(struct enc_key_data *enc_state, int image_index,
 
     if (out_hash) {
         memcpy(out_hash, hash, IMAGE_HASH_SIZE);
+    }
+#endif
+
+#if defined(MCUBOOT_SIGN_PURE)
+    /* If Pure type signature is expected then it has to be there */
+    rc = bootutil_check_for_pure(hdr, fap);
+    if (rc != 0) {
+	printk("Expected pure \n");
+	goto out;
     }
 #endif
 
